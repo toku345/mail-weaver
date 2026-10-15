@@ -1,2 +1,6 @@
 (test
  (name smoke))
+
+(test
+ (name sender_policy_test)
+ (libraries mail_weaver))
