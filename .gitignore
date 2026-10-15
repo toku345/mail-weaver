@@ -1,0 +1,31 @@
+# Build artifacts and local tool environments
+_build/
+_opam/
+.opam/
+.direnv/
+.envrc
+.merlin
+
+# Local configuration and secrets (examples must contain dummy values only)
+.env
+.env.*
+!.env.example
+config.local.*
+secrets/
+credentials/
+*.pem
+*.key
+
+# Local databases, including SQLite sidecar files
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Local mail data
+data/
+mail/
+*.eml
+*.mbox
