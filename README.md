@@ -5,8 +5,29 @@
 
 ## 現在の実装
 
-Issue #1の共通開発基盤です。OCaml / Duneのプロジェクトとスモークテストだけを含みます。
-送信者判定、CLI、JMAP接続、SQLiteへの永続化はまだ実装していません。
+OCaml / Duneの共通開発基盤と、送信者の許可判定を行う純粋関数を含みます。
+CLI、JMAP接続、SQLiteへの永続化はまだ実装していません。
+
+### 送信者の許可判定
+
+`Mail_weaver.Sender_policy.decide ~from ~allowlist`に、構造化済みFromの
+文字列リストと、`Address_set.of_list`で作った許可済みアドレスの不変集合を渡します。
+アドレスは有効なASCIIの`local-part@domain`形式が前提です。
+表示名・生ヘッダーの解析、quoted local-part、国際化アドレス、構文検証は扱いません。
+
+| From | 結果 |
+| --- | --- |
+| 0件（欠落） | `Pending Missing_from` |
+| 2件以上（同じアドレスの重複も含む） | `Pending Multiple_from` |
+| 1件で許可リストと一致 | `Inbox` |
+| 1件で一致しない | `Pending Unapproved_sender` |
+
+双方のドメインだけASCII小文字化して完全一致を比較します。
+ローカル部の大小文字、+タグ、ドットは区別し、ドメイン一致や部分一致では許可しません。
+たとえば`alice@EXAMPLE.TEST`は`alice@example.test`と一致しますが、
+`Alice@example.test`や`alice+news@example.test`とは一致しません。
+許可リストを変更せず、ネットワーク・ファイル・DB・時刻に依存しません。
+これは配送先候補の判定であり、送信者認証（SPF/DKIM/DMARC検証）ではありません。
 
 ## v0.1.0の範囲
 
@@ -53,6 +74,7 @@ dune runtest
 
 `test/smoke.ml`は標準ライブラリを使う小さなプログラムです。
 `dune runtest`がコンパイル・実行し、成功時に`smoke test passed`を出力します。
+`test/sender_policy_test.ml`は許可判定・大小文字・誤一致防止と入力の不変性を検証します。
 再実行して出力を確認する場合は`dune runtest --force`を使います。
 
 ## ローカルデータ
