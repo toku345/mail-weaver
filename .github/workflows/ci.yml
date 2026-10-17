@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 45
     env:
       DUNE_CACHE: disabled
+      # 不整合キャッシュを破棄したい場合は世代番号を更新する。
+      CI_CACHE_EPOCH: v1
     steps:
       - name: 対象コミットの取得
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -25,6 +27,9 @@ jobs:
       - name: 検証対象SHAの記録
         run: git rev-parse HEAD
 
+      - name: CI環境の復旧制御テスト
+        run: bash test/ci_cache_test.sh
+
       - name: OS依存の導入
         run: |
           sudo apt-get update
@@ -32,9 +37,27 @@ jobs:
             build-essential pkg-config m4 unzip bubblewrap rsync git curl \
             ca-certificates bzip2 patch
 
-      - name: 固定バージョンの隔離環境構築（キャッシュなし）
+      - name: キャッシュキーの計算
+        id: cache-key
+        env:
+          CACHE_KEY: mail-weaver-ci-${{ env.CI_CACHE_EPOCH }}-${{ runner.os }}-ubuntu-24.04-${{ runner.arch }}-${{ hashFiles('scripts/*ci*.sh', '.github/workflows/ci.yml', 'dune-project', '**/dune', '**/*.opam', '**/*.opam.locked') }}
+        run: printf 'key=%s\n' "$CACHE_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: ツール・依存キャッシュの復元
+        id: cache
+        continue-on-error: true
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ${{ runner.temp }}/mail-weaver-ci/bin
+            ${{ runner.temp }}/mail-weaver-ci/root
+          key: ${{ steps.cache-key.outputs.key }}
+
+      - name: 固定環境の検証・構築（不整合時は再構築）
         id: setup
-        run: ./scripts/setup-ci.sh "$RUNNER_TEMP/mail-weaver-ci"
+        env:
+          CACHE_HIT: ${{ steps.cache.outcome == 'success' && steps.cache.outputs.cache-hit == 'true' }}
+        run: ./scripts/prepare-ci.sh "$CACHE_HIT"
 
       - name: 静的チェック
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
@@ -59,3 +82,12 @@ jobs:
         run: |
           source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
           opam exec -- dune runtest --force
+
+      - name: ツール・依存キャッシュの保存
+        if: ${{ success() && steps.cache.outputs.cache-hit != 'true' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ${{ runner.temp }}/mail-weaver-ci/bin
+            ${{ runner.temp }}/mail-weaver-ci/root
+          key: ${{ steps.cache-key.outputs.key }}

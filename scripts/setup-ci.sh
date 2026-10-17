@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+expect_command() {
+  local label=$1 expected=$2 actual
+  shift 2
+  actual=$("$@")
+  if [[ $actual != "$expected" ]]; then
+    printf '%s が一致しません（必要: %s、実際: %s）。\n' "$label" "$expected" "$actual" >&2
+    exit 1
+  fi
+}
+
+restore=false
+if [[ $# == 2 && $1 == --restore ]]; then
+  restore=true
+  shift
+fi
 if [[ $# != 1 || $1 != /* ]]; then
-  echo '使い方: scripts/setup-ci.sh <新規ディレクトリの絶対パス>' >&2
+  echo '使い方: scripts/setup-ci.sh [--restore] <ディレクトリの絶対パス>' >&2
   exit 2
 fi
 
@@ -26,9 +41,17 @@ done
 
 ci_dir=$1
 # mkdir自身にも存在チェックを任せ、既存ディレクトリ・symlinkを上書きしない。
-mkdir -m 700 -- "$ci_dir"
+if [[ $restore == true ]]; then
+  [[ -d $ci_dir && ! -L $ci_dir && ! -L $ci_dir/bin && ! -L $ci_dir/root ]]
+else
+  mkdir -m 700 -- "$ci_dir"
+fi
 ci_dir=$(cd -- "$ci_dir" && pwd -P)
-mkdir -- "$ci_dir/bin" "$ci_dir/tmp"
+if [[ $restore == false ]]; then
+  mkdir -- "$ci_dir/bin"
+fi
+[[ ! -L $ci_dir/tmp && ! -L $ci_dir/environment.sh ]]
+mkdir -p -- "$ci_dir/tmp"
 
 # 呼び出し元のopam設定・コンパイラ設定を専用環境へ持ち込まない。
 while IFS= read -r variable; do
@@ -42,22 +65,33 @@ export PATH="$ci_dir/bin:$PATH"
 opam_version=2.6.1
 opam_sha256=b533d393a6967150d6ef41cb3d71e147e93ecbabeb59e921aa412c0ae79ebe3d
 repository_sha=eba24de6376079a3f9dfa4a9c9ca842475cd1bbc
-curl --fail --location --retry 3 \
-  "https://github.com/ocaml/opam/releases/download/$opam_version/opam-$opam_version-x86_64-linux" \
-  --output "$ci_dir/tmp/opam"
-printf '%s  %s\n' "$opam_sha256" "$ci_dir/tmp/opam" | sha256sum --check --strict
-install -m 755 -- "$ci_dir/tmp/opam" "$ci_dir/bin/opam"
+repository_url="git+https://github.com/ocaml/opam-repository.git#$repository_sha"
+saved_path="$ci_dir/root/.mail-weaver-ci-path"
+if [[ $restore == true ]]; then
+  expect_command 保存先 "$ci_dir" cat "$saved_path"
+  printf '%s  %s\n' "$opam_sha256" "$ci_dir/bin/opam" | sha256sum --check --strict
+else
+  curl --fail --location --retry 3 \
+    "https://github.com/ocaml/opam/releases/download/$opam_version/opam-$opam_version-x86_64-linux" \
+    --output "$ci_dir/tmp/opam"
+  printf '%s  %s\n' "$opam_sha256" "$ci_dir/tmp/opam" | sha256sum --check --strict
+  install -m 755 -- "$ci_dir/tmp/opam" "$ci_dir/bin/opam"
 
-opam init --bare --no-setup --no-opamrc \
-  default "git+https://github.com/ocaml/opam-repository.git#$repository_sha"
-opam switch create ci ocaml-base-compiler.5.4.1
-# OCamlFormatの依存テストは、固定したDuneとの制約が合わないため導入しない。
-opam install dune.3.24.2 ocamlformat.0.29.0
+  opam init --bare --no-setup --no-opamrc \
+    default "$repository_url"
+  opam switch create ci ocaml-base-compiler.5.4.1
+  # OCamlFormatの依存テストは、固定したDuneとの制約が合わないため導入しない。
+  opam install dune.3.24.2 ocamlformat.0.29.0
+fi
 
-[[ $(opam --version) == "$opam_version" ]]
-[[ $(opam exec -- ocamlc -version) == 5.4.1 ]]
-[[ $(opam exec -- dune --version) == 3.24.2 ]]
-[[ $(opam exec -- ocamlformat --version) == 0.29.0 ]]
+expect_command opam "$opam_version" opam --version
+expect_command OCaml 5.4.1 opam exec -- ocamlc -version
+expect_command Dune 3.24.2 opam exec -- dune --version
+expect_command OCamlFormat 0.29.0 opam exec -- ocamlformat --version
+expect_command switchの絶対パス "$ci_dir/root/ci" opam var prefix
+if [[ $restore == false ]]; then
+  printf '%s\n' "$ci_dir" > "$saved_path"
+fi
 printf 'opam: %s\nopam-repository: %s\n' "$opam_version" "$repository_sha"
 opam list --installed --columns=name,version
 
