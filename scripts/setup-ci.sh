@@ -1,8 +1,64 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+expect_equal() {
+  if [[ $2 != "$3" ]]; then
+    printf '%s が一致しません（必要: %s、実際: %s）。\n' "$1" "$3" "$2" >&2
+    exit 1
+  fi
+}
+
+expect_command() {
+  local label=$1 expected=$2 actual
+  shift 2
+  actual=$("$@")
+  expect_equal "$label" "$actual" "$expected"
+}
+
+validate_environment() {
+  if [[ $restore == true ]]; then
+    # 保存した設定はsourceせず、期待値との一致だけを調べる。
+    expect_equal 保存先 "$(cat "$manifest/path")" "$ci_dir"
+    expect_equal 構築処理 "$(cat "$manifest/setup-sha256")" "$script_sha"
+    expect_equal リポジトリURL "$(cat "$manifest/repository-url")" "$repository_url"
+    printf '%s  %s\n' "$opam_sha256" "$ci_dir/bin/opam" | sha256sum --check --strict
+  fi
+  expect_command opam "$opam_version" opam --version
+  expect_command OCaml "5.4.1" opam exec -- ocamlc -version
+  expect_command Dune "3.24.2" opam exec -- dune --version
+  expect_command OCamlFormat "0.29.0" opam exec -- ocamlformat --version
+  expect_command switchの絶対パス "$ci_dir/root/ci" opam var prefix
+  opam repository list --all --color=never > "$ci_dir/tmp/repositories"
+  # --allの表示は「名前 URL 使用switch」。固定URLのdefault行を要求する。
+  awk -v url="$repository_url" '$1 == "default" && $2 == url { found=1 } END { exit !found }' \
+    "$ci_dir/tmp/repositories"
+  opam list --installed --columns=name,version --short --color=never | LC_ALL=C sort \
+    > "$ci_dir/tmp/packages"
+  if [[ $restore == true ]]; then
+    cmp -- "$manifest/repositories" "$ci_dir/tmp/repositories"
+    cmp -- "$manifest/packages" "$ci_dir/tmp/packages"
+  else
+    mkdir -- "$manifest"
+    printf '%s\n' "$ci_dir" > "$manifest/path"
+    printf '%s\n' "$script_sha" > "$manifest/setup-sha256"
+    printf '%s\n' "$repository_url" > "$manifest/repository-url"
+    cp -- "$ci_dir/tmp/repositories" "$manifest/repositories"
+    cp -- "$ci_dir/tmp/packages" "$manifest/packages"
+  fi
+}
+
+# 検証関数だけを隔離fixtureから呼べるよう、source時は構築しない。
+if [[ ${BASH_SOURCE[0]} != "$0" ]]; then
+  return
+fi
+
+restore=false
+if [[ $# == 2 && $1 == --restore ]]; then
+  restore=true
+  shift
+fi
 if [[ $# != 1 || $1 != /* ]]; then
-  echo '使い方: scripts/setup-ci.sh <新規ディレクトリの絶対パス>' >&2
+  echo '使い方: scripts/setup-ci.sh [--restore] <ディレクトリの絶対パス>' >&2
   exit 2
 fi
 
@@ -26,9 +82,17 @@ done
 
 ci_dir=$1
 # mkdir自身にも存在チェックを任せ、既存ディレクトリ・symlinkを上書きしない。
-mkdir -m 700 -- "$ci_dir"
+if [[ $restore == true ]]; then
+  [[ -d $ci_dir && ! -L $ci_dir && ! -L $ci_dir/bin && ! -L $ci_dir/root ]]
+else
+  mkdir -m 700 -- "$ci_dir"
+fi
 ci_dir=$(cd -- "$ci_dir" && pwd -P)
-mkdir -- "$ci_dir/bin" "$ci_dir/tmp"
+if [[ $restore == false ]]; then
+  mkdir -- "$ci_dir/bin"
+fi
+[[ ! -L $ci_dir/tmp && ! -L $ci_dir/environment.sh ]]
+mkdir -p -- "$ci_dir/tmp"
 
 # 呼び出し元のopam設定・コンパイラ設定を専用環境へ持ち込まない。
 while IFS= read -r variable; do
@@ -42,22 +106,24 @@ export PATH="$ci_dir/bin:$PATH"
 opam_version=2.6.1
 opam_sha256=b533d393a6967150d6ef41cb3d71e147e93ecbabeb59e921aa412c0ae79ebe3d
 repository_sha=eba24de6376079a3f9dfa4a9c9ca842475cd1bbc
-curl --fail --location --retry 3 \
-  "https://github.com/ocaml/opam/releases/download/$opam_version/opam-$opam_version-x86_64-linux" \
-  --output "$ci_dir/tmp/opam"
-printf '%s  %s\n' "$opam_sha256" "$ci_dir/tmp/opam" | sha256sum --check --strict
-install -m 755 -- "$ci_dir/tmp/opam" "$ci_dir/bin/opam"
+repository_url="git+https://github.com/ocaml/opam-repository.git#$repository_sha"
+manifest="$ci_dir/root/.mail-weaver-ci"
+script_sha=$(sha256sum -- "${BASH_SOURCE[0]}" | cut -d ' ' -f 1)
+if [[ $restore == false ]]; then
+  curl --fail --location --retry 3 \
+    "https://github.com/ocaml/opam/releases/download/$opam_version/opam-$opam_version-x86_64-linux" \
+    --output "$ci_dir/tmp/opam"
+  printf '%s  %s\n' "$opam_sha256" "$ci_dir/tmp/opam" | sha256sum --check --strict
+  install -m 755 -- "$ci_dir/tmp/opam" "$ci_dir/bin/opam"
 
-opam init --bare --no-setup --no-opamrc \
-  default "git+https://github.com/ocaml/opam-repository.git#$repository_sha"
-opam switch create ci ocaml-base-compiler.5.4.1
-# OCamlFormatの依存テストは、固定したDuneとの制約が合わないため導入しない。
-opam install dune.3.24.2 ocamlformat.0.29.0
+  opam init --bare --no-setup --no-opamrc \
+    default "$repository_url"
+  opam switch create ci ocaml-base-compiler.5.4.1
+  # OCamlFormatの依存テストは、固定したDuneとの制約が合わないため導入しない。
+  opam install dune.3.24.2 ocamlformat.0.29.0
+fi
 
-[[ $(opam --version) == "$opam_version" ]]
-[[ $(opam exec -- ocamlc -version) == 5.4.1 ]]
-[[ $(opam exec -- dune --version) == 3.24.2 ]]
-[[ $(opam exec -- ocamlformat --version) == 0.29.0 ]]
+validate_environment
 printf 'opam: %s\nopam-repository: %s\n' "$opam_version" "$repository_sha"
 opam list --installed --columns=name,version
 
