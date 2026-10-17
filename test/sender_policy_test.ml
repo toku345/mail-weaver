@@ -36,8 +36,7 @@ let copy_string s = String.sub s 0 (String.length s)
 (* 実装仕様の判定表 *)
 let () =
   check "1件・一致あり -> 受信箱"
-    (decide
-       ~from:[ "user@example.com" ]
+    (decide ~from:[ "user@example.com" ]
        ~allowed:[ "user@example.com"; "other@example.net" ])
     Inbox;
   check "1件・一致なし -> 承認待ち（未許可）"
@@ -98,8 +97,7 @@ let () =
     (decide ~from:[ "user@example.com" ] ~allowed:[ "example.com" ])
     (Pending Sender_not_allowed);
   check "部分一致（許可リスト側が接尾辞） -> 承認待ち（未許可）"
-    (decide
-       ~from:[ "user@example.com" ]
+    (decide ~from:[ "user@example.com" ]
        ~allowed:[ "user@example.com.evil.example" ])
     (Pending Sender_not_allowed);
   check "部分一致（From側が接尾辞） -> 承認待ち（未許可）"
