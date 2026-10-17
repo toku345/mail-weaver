@@ -28,7 +28,7 @@ jobs:
         run: git rev-parse HEAD
 
       - name: CI環境の復旧制御テスト
-        run: python3 -B -m unittest discover -s test -p 'ci_cache_test.py' -v
+        run: bash test/ci_cache_test.sh
 
       - name: OS依存の導入
         run: |
@@ -41,9 +41,7 @@ jobs:
         id: cache-key
         env:
           CACHE_KEY: mail-weaver-ci-${{ env.CI_CACHE_EPOCH }}-${{ runner.os }}-ubuntu-24.04-${{ runner.arch }}-${{ hashFiles('scripts/*ci*.sh', '.github/workflows/ci.yml', 'dune-project', '**/dune', '**/*.opam', '**/*.opam.locked') }}
-        run: |
-          printf 'key=%s\n' "$CACHE_KEY" >> "$GITHUB_OUTPUT"
-          printf 'started=%s\n' "$(date +%s)" >> "$GITHUB_OUTPUT"
+        run: printf 'key=%s\n' "$CACHE_KEY" >> "$GITHUB_OUTPUT"
 
       - name: ツール・依存キャッシュの復元
         id: cache
@@ -59,7 +57,6 @@ jobs:
         id: setup
         env:
           CACHE_HIT: ${{ steps.cache.outcome == 'success' && steps.cache.outputs.cache-hit == 'true' }}
-          CI_PREP_STARTED: ${{ steps.cache-key.outputs.started }}
         run: ./scripts/prepare-ci.sh "$CACHE_HIT"
 
       - name: 静的チェック

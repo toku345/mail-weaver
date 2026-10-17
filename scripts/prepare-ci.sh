@@ -10,8 +10,6 @@ runner_dir=$(cd -- "$RUNNER_TEMP" && pwd -P)
 [[ $runner_dir != / ]]
 ci_dir="$runner_dir/mail-weaver-ci"
 setup_script="$(cd -- "$(dirname -- "$0")" && pwd -P)/setup-ci.sh"
-started=${CI_PREP_STARTED:-$(date +%s)}
-[[ $started =~ ^[0-9]+$ ]]
 mode=miss
 
 if [[ $1 == true ]]; then
@@ -28,8 +26,4 @@ if [[ $mode != hit ]]; then
   rm -rf -- "$ci_dir"
   "$setup_script" "$ci_dir"
 fi
-elapsed=$(( $(date +%s) - started ))
-printf 'CI環境: %s、準備時間（復元を含む）: %s秒\n' "$mode" "$elapsed"
-if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then
-  printf 'CI環境: %s、準備時間（復元を含む）: %s秒\n' "$mode" "$elapsed" >> "$GITHUB_STEP_SUMMARY"
-fi
+printf 'CI環境: %s\n' "$mode"
