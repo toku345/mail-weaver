@@ -1,0 +1,6 @@
+(env
+ (dev
+  (flags
+   (:standard
+    -w +27+32..39+50+60+66+67+69+74
+    -alert +deprecated++deprecated))))
