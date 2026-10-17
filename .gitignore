@@ -1,5 +1,6 @@
 # Build artifacts and local tool environments
 _build/
+_build-static-check/
 _opam/
 .opam/
 .direnv/
