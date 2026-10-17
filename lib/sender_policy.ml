@@ -1,11 +1,5 @@
-type pending_reason =
-  | Missing_from
-  | Multiple_from
-  | Sender_not_allowed
-
-type decision =
-  | Inbox
-  | Pending of pending_reason
+type pending_reason = Missing_from | Multiple_from | Sender_not_allowed
+type decision = Inbox | Pending of pending_reason
 
 (* 比較用の正規化。ドメイン部分だけ ASCII 小文字化し、ローカル部はそのまま残す。
    入力は local-part@domain 形式で '@' を 1 つだけ含む前提なので、最初の '@' で分割する。 *)
