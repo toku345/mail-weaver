@@ -44,6 +44,7 @@ CLI、JMAP接続、SQLiteへの永続化はまだ実装していません。
 | --- | --- |
 | OCaml | 5.4.1 |
 | Dune | 3.24.2 |
+| OCamlFormat（開発用） | 0.29.0 |
 
 新しいチェックアウトで、既存のswitchを現在のシェルに反映して確認します。
 switchの再作成やグローバル設定の変更は不要です。
@@ -54,8 +55,8 @@ ocaml -version
 dune --version
 ```
 
-現時点ではOCaml標準ライブラリとDune以外の依存はありません。
-上記バージョンが導入済みなら、依存導入操作は不要です。
+実装・テストにはOCaml標準ライブラリとDuneを使用し、整形には開発用のOCamlFormatを使用します。
+上記バージョンが導入済みなら、追加の導入操作は不要です。
 既存のOCaml 5.4.1のswitchにDuneだけが不足している場合の導入コマンドは次のとおりです。
 
 ```sh
@@ -72,6 +73,55 @@ dune runtest
 `test/smoke.ml`は標準ライブラリを使う小さなプログラムです。
 `dune runtest`がコンパイル・実行し、成功時に`smoke test passed`を出力します。
 再実行して出力を確認する場合は`dune runtest --force`を使います。
+
+## 整形
+
+OCamlFormat 0.29.0と`profile=default`をルートの`.ocamlformat`で固定しています。
+異なるバージョンのOCamlFormatではバージョンチェックが失敗します。
+現在使用するswitchを確認し、そのswitchに導入してください。
+OCaml 5.4.1 / Dune 3.24.2は開発環境の手順で用意します。
+
+```sh
+opam switch show
+opam install ocamlformat.0.29.0
+eval "$(opam env)"
+ocamlc -version
+dune --version
+ocamlformat --version
+```
+
+OCamlFormat自身のテスト用依存には`dune < 3.22`の制約があるため、
+この導入に`--with-test`は指定しません。プロジェクトのテストは別途実行します。
+
+プロジェクトルートで次を実行します。
+
+```sh
+# ソースを書き換えて整形
+dune fmt
+
+# ソースを書き換えず、未整形なら差分を表示して非0終了
+dune build @fmt
+```
+
+チェックには`--auto-promote`を付けません。差分を確認して`dune fmt`で修正し、
+チェックを再実行してください。ビルドディレクトリには整形結果が生成されます。
+
+対象はプロジェクト内の`.ml` / `.mli`で、`lib/`の実装・インターフェースと
+`test/`のテストを含みます。`dune-project`の`enabled_for ocaml`で
+Duneファイルの整形は対象外にしています。
+生成物とインストール済み外部依存は独自に走査せず、Dune標準の探索を使用します。
+`_build/`、`_build-static-check/`、`_opam/`などは探索対象外です。
+将来、外部ソースをリポジトリ内に取り込む場合はDuneの`vendored_dirs`で指定します。
+特定のエディタや独自スクリプトは不要です。
+
+ローカルと将来のCIでは、同じ固定バージョンのツールで次を実行します。
+整形チェックと静的チェックは独立した入口とし、CIワークフローは別途導入します。
+
+```sh
+dune build @fmt
+./scripts/check-static.sh
+dune runtest
+```
 
 ## 静的チェック
 
