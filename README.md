@@ -31,6 +31,15 @@ opam exec -- dune runtest --force
 整形チェックはソースを書き換えず、テストは`--force`で毎回実行します。
 CIは書き込み権限・秘密情報・実メールを使わず、自動コミットや成果物のアップロードも行いません。
 
+### GitHub Actionsの更新
+
+Dependabotは毎週月曜9時（日本時間）にGitHub Actionsの更新を確認し、
+バージョン更新PRを同時に最大5件まで作成します。SHA固定のActionも対象で、更新PRは既存のCIで検証します。
+自動マージは設定していません。設定は`.github/dependabot.yml`で管理します。
+
+OCaml / opam / Dune / OCamlFormatとopam-repositoryの固定値はこの設定の対象外です。
+これらは構築スクリプト、チェック設定、READMEの整合を確認して手動で更新します。
+
 ### UbuntuでCI環境を新規構築する
 
 CIは`./scripts/setup-ci.sh <新規ディレクトリの絶対パス>`を使い、
