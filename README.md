@@ -8,6 +8,84 @@
 Issue #1の共通開発基盤と、Issue #2の送信者許可判定を含みます。
 CLI、JMAP接続、SQLiteへの永続化はまだ実装していません。
 
+## CI
+
+GitHub Actionsの`OCaml CI`は、main向けPR（Draftを含む）とmainへのpushで実行します。
+Ubuntu 24.04 x86_64の1環境を使い、タイムアウトは45分です。
+PRではGitHubが作るマージコミット、pushではpush先のコミットを検証し、
+checkoutしたSHAをログに記録します。
+
+環境構築後、次のコマンドをそれぞれ別ステップで実行します。
+既存の開発環境では、プロジェクトルートから同じコマンドで再現できます。
+
+```sh
+opam exec -- ./scripts/check-static.sh
+opam exec -- dune build @fmt
+opam exec -- dune build
+opam exec -- dune runtest --force
+```
+
+静的チェックはコンパイラの型チェック・警告を使い、追加linterは導入しません。
+チェックが失敗しても環境構築が成功していれば残りのチェックを実行し、
+非0終了はジョブの失敗として扱います。キャンセル時は停止します。
+整形チェックはソースを書き換えず、テストは`--force`で毎回実行します。
+CIは書き込み権限・秘密情報・実メールを使わず、自動コミットや成果物のアップロードも行いません。
+
+### UbuntuでCI環境を新規構築する
+
+CIは`./scripts/setup-ci.sh <新規ディレクトリの絶対パス>`を使い、
+opam 2.6.1 / OCaml 5.4.1 / Dune 3.24.2 / OCamlFormat 0.29.0を導入します。
+opamの公式Linuxバイナリはスクリプトに記録したSHA-256で検証します。
+opam-repositoryは`eba24de6376079a3f9dfa4a9c9ca842475cd1bbc`に固定し、
+間接依存を含む導入パッケージ一覧をログに残します。
+OCamlFormatの導入に`--with-test`は付けません。
+
+Ubuntu 24.04 x86_64で、OS依存を先に用意します。
+この`apt-get`操作はOS全体へパッケージを導入します。
+
+```sh
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+  build-essential pkg-config m4 unzip bubblewrap rsync git curl \
+  ca-certificates bzip2 patch
+```
+
+続いて、bashからプロジェクトルートで実行します。
+
+```bash
+ci_parent=$(mktemp -d)
+ci_dir="$ci_parent/environment"
+./scripts/setup-ci.sh "$ci_dir"
+(
+  set -e
+  source "$ci_dir/environment.sh"
+  opam exec -- ./scripts/check-static.sh
+  opam exec -- dune build @fmt
+  opam exec -- dune build
+  opam exec -- dune runtest --force
+)
+# 確認後、今回作成した隔離環境を削除する。
+rm -rf -- "$ci_parent"
+```
+
+スクリプトはUbuntu 24.04 x86_64以外では変更前に停止し、既存ディレクトリへの上書きを拒否します。
+指定先の配下にバイナリ・opam root・`ci` switch・一時ファイルを配置し、
+既存の`default` switch、個人のopam設定、シェル設定は変更しません。
+途中で失敗した場合も既存ディレクトリは再利用せず、確認後に削除して新しい指定先で再実行してください。
+
+ActionsキャッシュとDune共有キャッシュは使わず、新しいランナーから毎回構築します。
+固定するのはツールと依存メタデータです。ランナーイメージやOSパッケージ全体の
+完全な再現性を保証するものではありません。バージョン更新時はスクリプト、
+既存チェックの固定値、READMEを合わせて更新し、新規環境で再検証してください。
+
+### CI導入の検証記録
+
+導入時には専用Draft PRで、警告27・未整形コード・テスト期待値の違反を
+1種類ずつ追加・除去し、対象ステップの診断と無関係なチェックの成功を確認します。
+実行URL・checkout SHA・各チェック結果はPR本文に記録し、意図的な違反はmainへマージしません。
+完了状態は「ローカル検証済み」「PR上で正常・異常検証済み」
+「マージ後のmain push確認済み」に分け、最後の確認まではIssue全体を完了扱いにしません。
+
 ## 送信者の許可判定
 
 `lib/sender_policy.ml`の`decide ~from ~allowed`が、Fromアドレス一覧と許可済みアドレス一覧から配送先候補を返す純粋関数です。
