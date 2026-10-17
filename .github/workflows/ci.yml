@@ -1,0 +1,61 @@
+name: OCaml CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: 静的チェック・整形・ビルド・テスト (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      DUNE_CACHE: disabled
+    steps:
+      - name: 対象コミットの取得
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: 検証対象SHAの記録
+        run: git rev-parse HEAD
+
+      - name: OS依存の導入
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config m4 unzip bubblewrap rsync git curl \
+            ca-certificates bzip2 patch
+
+      - name: 固定バージョンの隔離環境構築（キャッシュなし）
+        id: setup
+        run: ./scripts/setup-ci.sh "$RUNNER_TEMP/mail-weaver-ci"
+
+      - name: 静的チェック
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
+          opam exec -- ./scripts/check-static.sh
+
+      - name: 整形チェック（変更なし）
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
+          opam exec -- dune build @fmt
+
+      - name: ビルド
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
+          opam exec -- dune build
+
+      - name: 全ユニットテスト（毎回実行）
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
+          opam exec -- dune runtest --force
