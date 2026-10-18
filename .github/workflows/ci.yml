@@ -16,8 +16,6 @@ jobs:
     timeout-minutes: 45
     env:
       DUNE_CACHE: disabled
-      # 不整合キャッシュを破棄したい場合は世代番号を更新する。
-      CI_CACHE_EPOCH: v1
     steps:
       - name: 対象コミットの取得
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -27,67 +25,42 @@ jobs:
       - name: 検証対象SHAの記録
         run: git rev-parse HEAD
 
-      - name: CI環境の復旧制御テスト
-        run: bash test/ci_cache_test.sh
-
-      - name: OS依存の導入
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config m4 unzip bubblewrap rsync git curl \
-            ca-certificates bzip2 patch
-
-      - name: キャッシュキーの計算
-        id: cache-key
-        env:
-          CACHE_KEY: mail-weaver-ci-${{ env.CI_CACHE_EPOCH }}-${{ runner.os }}-ubuntu-24.04-${{ runner.arch }}-${{ hashFiles('scripts/*ci*.sh', '.github/workflows/ci.yml', 'dune-project', '**/dune', '**/*.opam', '**/*.opam.locked') }}
-        run: printf 'key=%s\n' "$CACHE_KEY" >> "$GITHUB_OUTPUT"
-
-      - name: ツール・依存キャッシュの復元
-        id: cache
-        continue-on-error: true
-        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ${{ runner.temp }}/mail-weaver-ci/bin
-            ${{ runner.temp }}/mail-weaver-ci/root
-          key: ${{ steps.cache-key.outputs.key }}
-
-      - name: 固定環境の検証・構築（不整合時は再構築）
+      - name: OCaml・opam環境の準備
         id: setup
-        env:
-          CACHE_HIT: ${{ steps.cache.outcome == 'success' && steps.cache.outputs.cache-hit == 'true' }}
-        run: ./scripts/prepare-ci.sh "$CACHE_HIT"
+        uses: ocaml/setup-ocaml@93303b622b2522e4411e295f9e77411a24912ac7 # v3.9.0
+        with:
+          ocaml-compiler: ocaml-base-compiler.5.4.1
+          opam-repositories: |
+            default: git+https://github.com/ocaml/opam-repository.git#eba24de6376079a3f9dfa4a9c9ca842475cd1bbc
+          opam-pin: false
+          dune-cache: false
+          # fork PRでは復元・保存とも無効にする。
+          cache: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          # 不整合時はこのprefixを更新して再実行する。
+          cache-prefix: mail-weaver-v1
+
+      - name: 固定バージョンの開発ツールを導入
+        id: tools
+        run: |
+          opam install dune.3.24.2 ocamlformat.0.29.0
+          opam --version
+          opam exec -- ocamlc -version
+          opam exec -- dune --version
+          opam exec -- ocamlformat --version
+          opam list --installed --columns=name,version
 
       - name: 静的チェック
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: |
-          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
-          opam exec -- ./scripts/check-static.sh
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: opam exec -- ./scripts/check-static.sh
 
       - name: 整形チェック（変更なし）
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: |
-          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
-          opam exec -- dune build @fmt
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: opam exec -- dune build @fmt
 
       - name: ビルド
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: |
-          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
-          opam exec -- dune build
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: opam exec -- dune build
 
       - name: 全ユニットテスト（毎回実行）
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: |
-          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
-          opam exec -- dune runtest --force
-
-      - name: ツール・依存キャッシュの保存
-        if: ${{ success() && steps.cache.outputs.cache-hit != 'true' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ${{ runner.temp }}/mail-weaver-ci/bin
-            ${{ runner.temp }}/mail-weaver-ci/root
-          key: ${{ steps.cache-key.outputs.key }}
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: opam exec -- dune runtest --force
