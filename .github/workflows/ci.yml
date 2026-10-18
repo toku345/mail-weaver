@@ -39,28 +39,24 @@ jobs:
           # 不整合時はこのprefixを更新して再実行する。
           cache-prefix: mail-weaver-v1
 
-      - name: 固定バージョンの開発ツールを導入
-        id: tools
+      - name: lockから依存を導入・検証
+        id: deps
         run: |
-          opam install dune.3.24.2 ocamlformat.0.29.0
-          opam --version
-          opam exec -- ocamlc -version
-          opam exec -- dune --version
-          opam exec -- ocamlformat --version
-          opam list --installed --columns=name,version
+          ./scripts/install-deps.sh "$OPAMROOT" "$GITHUB_WORKSPACE"
+          opam repository list --cli=2.2 --root="$OPAMROOT" --switch="$GITHUB_WORKSPACE"
 
       - name: 静的チェック
-        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: opam exec -- ./scripts/check-static.sh
 
       - name: 整形チェック（変更なし）
-        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: opam exec -- dune build @fmt
 
       - name: ビルド
-        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: opam exec -- dune build
 
       - name: 全ユニットテスト（毎回実行）
-        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: opam exec -- dune runtest --force
