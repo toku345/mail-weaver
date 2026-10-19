@@ -1,0 +1,67 @@
+opam-version: "2.0"
+name: "mail_weaver"
+version: "dev"
+synopsis: "Mail-weaver メール整理アシスタント"
+maintainer: "toku345"
+authors: "toku345"
+homepage: "https://github.com/toku345/mail-weaver"
+bug-reports: "https://github.com/toku345/mail-weaver/issues"
+depends: [
+  "astring" {= "0.8.5"}
+  "base" {= "v0.17.3"}
+  "base-bigarray" {= "base"}
+  "base-domains" {= "base"}
+  "base-effects" {= "base"}
+  "base-nnp" {= "base"}
+  "base-threads" {= "base"}
+  "base-unix" {= "base"}
+  "camlp-streams" {= "5.0.1"}
+  "cmdliner" {= "2.1.1"}
+  "csexp" {= "1.5.2"}
+  "dune" {= "3.24.2"}
+  "dune-build-info" {= "3.24.2"}
+  "dune-configurator" {= "3.24.2"}
+  "either" {= "1.0.0"}
+  "fix" {= "20250919"}
+  "fpath" {= "0.7.3"}
+  "menhir" {= "20260209"}
+  "menhirCST" {= "20260209"}
+  "menhirGLR" {= "20260209"}
+  "menhirLib" {= "20260209"}
+  "menhirSdk" {= "20260209"}
+  "ocaml" {= "5.4.1"}
+  "ocaml-base-compiler" {= "5.4.1"}
+  "ocaml-compiler" {= "5.4.1"}
+  "ocaml-config" {= "3"}
+  "ocaml-options-vanilla" {= "1"}
+  "ocaml-version" {= "4.1.4"}
+  "ocaml_intrinsics_kernel" {= "v0.17.2"}
+  "ocamlbuild" {= "0.16.1"}
+  "ocamlfind" {= "1.9.8"}
+  "ocamlformat" {= "0.29.0"}
+  "ocamlformat-lib" {= "0.29.0"}
+  "ocp-indent" {= "1.10.0"}
+  "re" {= "1.14.0"}
+  "sexplib0" {= "v0.17.0"}
+  "stdio" {= "v0.17.0"}
+  "topkg" {= "1.1.1"}
+  "uucp" {= "18.0.0"}
+  "uuseg" {= "18.0.0"}
+  "uutf" {= "1.0.4"}
+]
+build: [
+  ["dune" "subst"] {dev}
+  [
+    "dune"
+    "build"
+    "-p"
+    name
+    "-j"
+    jobs
+    "@install"
+    "@runtest" {with-test}
+    "@doc" {with-doc}
+  ]
+]
+dev-repo: "git+https://github.com/toku345/mail-weaver.git"
+x-maintenance-intent: ["(latest)"]

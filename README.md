@@ -26,10 +26,10 @@ opam exec -- dune runtest --force
 ```
 
 静的チェックはコンパイラの型チェック・警告を使い、追加linterは導入しません。
-チェックが失敗しても環境構築が成功していれば残りのチェックを実行し、
+チェックが失敗しても環境準備と開発ツールの導入が成功していれば残りのチェックを実行し、
 非0終了はジョブの失敗として扱います。キャンセル時は停止します。
 整形チェックはソースを書き換えず、テストは`--force`で毎回実行します。
-CIは書き込み権限・秘密情報・実メールを使わず、自動コミットや成果物のアップロードも行いません。
+CIのトークン権限は`contents: read`のみで、秘密情報・実メールを使わず、自動コミットや成果物のアップロードも行いません。
 
 ### GitHub Actionsの更新
 
@@ -37,55 +37,38 @@ Dependabotは毎週月曜9時（日本時間）にGitHub Actionsの更新を確�
 バージョン更新PRを同時に最大5件まで作成します。SHA固定のActionも対象で、更新PRは既存のCIで検証します。
 自動マージは設定していません。設定は`.github/dependabot.yml`で管理します。
 
-OCaml / opam / Dune / OCamlFormatとopam-repositoryの固定値はこの設定の対象外です。
-これらは構築スクリプト、チェック設定、READMEの整合を確認して手動で更新します。
+OCaml・Dune・OCamlFormatの依存定義・lockや、opam-repositoryのSHAはこの設定の対象外です。
+これらは「開発環境と依存管理」の手順に従い、設定の整合を確認して手動で更新します。
 
-### UbuntuでCI環境を新規構築する
+### CI環境とキャッシュ
 
-CIは`./scripts/setup-ci.sh <新規ディレクトリの絶対パス>`を使い、
-opam 2.6.1 / OCaml 5.4.1 / Dune 3.24.2 / OCamlFormat 0.29.0を導入します。
-opamの公式Linuxバイナリはスクリプトに記録したSHA-256で検証します。
-opam-repositoryは`eba24de6376079a3f9dfa4a9c9ca842475cd1bbc`に固定し、
-間接依存を含む導入パッケージ一覧をログに残します。
-OCamlFormatの導入に`--with-test`は付けません。
+環境構築とコンパイラのキャッシュは
+[ocaml/setup-ocaml v3.9.0](https://github.com/ocaml/setup-ocaml/releases/tag/v3.9.0)に任せます。
+ActionはコミットSHAで固定し、OCaml 5.4.1とopam-repositoryのSHAをワークフローで固定します。
+opamはActionの対応範囲内で利用可能な最新安定版を選び、バージョンをログへ記録します。
+Actionの更新時に、その対応範囲も確認します。
 
-Ubuntu 24.04 x86_64で、OS依存を先に用意します。
-この`apt-get`操作はOS全体へパッケージを導入します。
+キャッシュ対象はopam rootとコンパイラのローカルswitch（`_opam/`）です。
+キーにはOS・アーキテクチャ・opam・コンパイラ・リポジトリURL・sandbox設定が反映されます。
+Actionはコンパイラ環境の構築直後にキャッシュを保存します。
+プロジェクトと開発ツールの依存は、その後に毎回`mail_weaver.opam.locked`から導入します。
+共用スクリプトで元の依存定義・生成物・lockの整合性を確認し、`--with-test`は付けません。
+Dune共有キャッシュとプロジェクトのビルド・テスト成果物のキャッシュは無効です。
 
-```sh
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends \
-  build-essential pkg-config m4 unzip bubblewrap rsync git curl \
-  ca-certificates bzip2 patch
-```
+mainへのpushと同一リポジトリのPRではキャッシュを使い、fork PRでは復元・保存とも無効にします。
+権限を追加せず、checkoutの認証情報も保存しません。
+キャッシュヒット時にも全4チェックと`dune runtest --force`を毎回実行します。
 
-続いて、bashからプロジェクトルートで実行します。
+環境準備やチェックの失敗はCI失敗として扱い、専用の自動破棄・再構築処理は持ちません。
+復旧にはActions画面で該当キャッシュを削除するか、ワークフローの`cache-prefix`を更新します。
+キャッシュを無効にして実行する場合は`cache: false`を指定します。
+時間比較には環境準備ステップと依存導入ステップの所要時間の合計を使います。
 
-```bash
-ci_parent=$(mktemp -d)
-ci_dir="$ci_parent/environment"
-./scripts/setup-ci.sh "$ci_dir"
-(
-  set -e
-  source "$ci_dir/environment.sh"
-  opam exec -- ./scripts/check-static.sh
-  opam exec -- dune build @fmt
-  opam exec -- dune build
-  opam exec -- dune runtest --force
-)
-# 確認後、今回作成した隔離環境を削除する。
-rm -rf -- "$ci_parent"
-```
+ローカルでは開発環境の手順で同じOCaml・Dune・OCamlFormatを用意し、前述の全4コマンドを実行します。
+Actionとランナーを含む環境全体の再現性を保証するものではありません。
 
-スクリプトはUbuntu 24.04 x86_64以外では変更前に停止し、既存ディレクトリへの上書きを拒否します。
-指定先の配下にバイナリ・opam root・`ci` switch・一時ファイルを配置し、
-既存の`default` switch、個人のopam設定、シェル設定は変更しません。
-途中で失敗した場合も既存ディレクトリは再利用せず、確認後に削除して新しい指定先で再実行してください。
-
-ActionsキャッシュとDune共有キャッシュは使わず、新しいランナーから毎回構築します。
-固定するのはツールと依存メタデータです。ランナーイメージやOSパッケージ全体の
-完全な再現性を保証するものではありません。バージョン更新時はスクリプト、
-既存チェックの固定値、READMEを合わせて更新し、新規環境で再検証してください。
+Issue #16の検証では、実CIのミス→ヒット、準備時間の比較、ヒット時のチェック実行を確認します。
+独立したキャッシュ無効実行とマージ後mainの実測は今回の完了条件に含めません。
 
 ### CI導入の検証記録
 
@@ -122,63 +105,123 @@ ActionsキャッシュとDune共有キャッシュは使わず、新しいラン
 - 利用者がアーカイブ・削除したメールを、自動で受信箱へ戻さない。
 - 実行ホストの停止中に処理が滞留することは許容する。
 
-## 開発環境
+## 開発環境と依存管理
 
-共通環境はopam 2.6.1の既存の`default` switchで管理しています。
-比較する実装では、次のバージョンを共通で使用してください。
+依存定義の編集元は`dune-project`です。Duneが生成する`mail_weaver.opam`と、
+`opam lock`で生成する`mail_weaver.opam.locked`をGit管理します。
+`.opam`とlockは手編集しません。実装・ユニットテストはOCaml標準ライブラリを使います。
 
 | ツール | バージョン |
 | --- | --- |
 | OCaml | 5.4.1 |
 | Dune | 3.24.2 |
-| OCamlFormat（開発用） | 0.29.0 |
+| OCamlFormat | 0.29.0 |
 
-新しいチェックアウトで、既存のswitchを現在のシェルに反映して確認します。
-switchの再作成やグローバル設定の変更は不要です。
+DuneとOCamlFormatも通常の依存に含め、lockで間接依存まで固定します。
+opam本体は利用可能な安定版を使い、共用スクリプトのCLI互換性は`--cli=2.2`で指定します。
+OSのパッケージや環境全体を固定するものではありません。
 
-```sh
-eval "$(opam env --switch=default)"
-ocaml -version
-dune --version
-```
+### 新しい専用環境の構築
 
-実装・テストにはOCaml標準ライブラリとDuneを使用し、整形には開発用のOCamlFormatを使用します。
-上記バージョンが導入済みなら、追加の導入操作は不要です。
-既存のOCaml 5.4.1のswitchにDuneだけが不足している場合の導入コマンドは次のとおりです。
+opam 2.2以上、Cコンパイラ、make、Gitなどをあらかじめ用意してください。
+プロジェクトルートで、既存の`default` switchや個人設定に触れずに構築します。
+以下は一時rootを使います。rootの保存先を変更する場合も専用の絶対パスを指定してください。
 
 ```sh
-opam install --switch=default dune.3.24.2
+mail_weaver_repository='git+https://github.com/ocaml/opam-repository.git#eba24de6376079a3f9dfa4a9c9ca842475cd1bbc'
+mail_weaver_root=$(mktemp -d "${TMPDIR:-/tmp}/mail-weaver-opam.XXXXXX")
+export OPAMROOT="$mail_weaver_root" OPAMSWITCH=mail-weaver
+unset OPAMLOCKED OPAMWITHTEST OPAMWITHDOC OPAMWITHDEVSETUP \
+  OPAMBUILDTEST OPAMBUILDDOC OPAMBESTEFFORT OPAMIGNORECONSTRAINTS \
+  OPAMIGNOREAVAILABLE OPAMSKIPVERSIONCHECKS
+opam init --cli=2.2 --root="$OPAMROOT" --bare --no-setup --no-opamrc \
+  --yes default "$mail_weaver_repository"
+opam switch create --cli=2.2 --root="$OPAMROOT" \
+  "$OPAMSWITCH" ocaml-base-compiler.5.4.1 --yes
+./scripts/install-deps.sh "$OPAMROOT" "$OPAMSWITCH"
 ```
 
-プロジェクトルートでビルド・テストします。
+共用スクリプトは初期化済みrootとswitchを必須引数で受け取り、`default`とpinを拒否します。
+lockがなければ停止し、`opam install . --deps-only --locked`に相当する導入を実行します。
+さらに元の依存制約、`.opam`の生成同期、導入済み依存から再生成したlockとの一致を確認します。
+不整合時に未固定の導入へ切り替えたり、追跡済みlockを自動更新したりしません。
+
+Duneが生成する`odoc {with-doc}`は、今回は有効にしません。
+`opam lock`が未導入の`odoc`を表示することがありますが、文書生成条件を無効にした環境では想定どおりです。
+OCamlFormatを含む依存パッケージ自身のテスト・文書・開発用依存も有効にしません。
+プロジェクトのテストは、依存導入後に別途実行します。
+
+同じシェルで、全4チェックを実行します。
 
 ```sh
-dune build
-dune runtest
+opam exec -- ./scripts/check-static.sh
+opam exec -- dune build @fmt
+opam exec -- dune build
+opam exec -- dune runtest --force
 ```
 
-`test/smoke.ml`は標準ライブラリを使う小さなプログラムです。
-`dune runtest`がコンパイル・実行し、成功時に`smoke test passed`を出力します。
-再実行して出力を確認する場合は`dune runtest --force`を使います。
+`opam exec`は上でexportした専用root／switchを使います。
+別のシェルから再利用する場合は、保存したrootの絶対パスとswitchを再指定してください。
+直接`dune`などを実行する場合は、この専用環境を現在のシェルに反映します。
+個人のシェル設定ファイルは変更しません。
+
+```sh
+eval "$(opam env --cli=2.2 --root="$OPAMROOT" --switch="$OPAMSWITCH")"
+```
+
+### 依存定義とlockの更新
+
+1. `dune-project`の依存・制約を変更します。ツールを更新する場合は、
+   `.ocamlformat`と静的チェックスクリプトの固定値も同時に更新します。
+2. 既存の専用環境で、次を実行して`.opam`を再生成します。
+   `@opam`が差分を報告したら内容を確認して`dune promote`で反映し、チェックを再実行します。
+
+```sh
+opam exec -- dune build @opam
+opam exec -- dune promote
+opam exec -- dune build @opam
+```
+
+3. 「新しい専用環境の構築」の`opam switch create`までを、新しいrootで実行します。
+   古いlockとの不整合があるため、共用スクリプトはまだ実行しません。
+   個人のswitchや、依存が導入済みのswitchからlockを生成しないでください。
+4. プロジェクトルートで、更新時に限り`--locked`を付けずに依存を解決し、lockを生成します。
+   `opam lock`の出力先はカレントディレクトリです。
+
+```sh
+opam install --cli=2.2 --root="$OPAMROOT" --switch="$OPAMSWITCH" \
+  --yes --deps-only ./mail_weaver.opam
+opam lock --cli=2.2 --root="$OPAMROOT" --switch="$OPAMSWITCH" ./mail_weaver.opam
+./scripts/install-deps.sh "$OPAMROOT" "$OPAMSWITCH"
+git diff -- dune-project mail_weaver.opam mail_weaver.opam.locked
+```
+
+5. 直接・間接依存の採用バージョン、意図しない依存・pin・ローカルパスがないことを確認します。
+   再度新しい専用root／switchを作り、今度は共用スクリプトでlockから導入し、全4チェックを実行します。
+   macOSとUbuntuの両方で確認し、OS差があればlockを無視して回避せずに原因を調べます。
+
+### 固定リポジトリの更新とCI検証
+
+リポジトリSHAを更新する場合は、CIの`opam-repositories`と上記手順のURLを同じSHAへ変更します。
+そのSHAの新規環境で依存・lockの更新、差分確認、新規環境への再導入、全4チェックを行います。
+コンパイラ・主要ツールの更新は、リポジトリSHAの更新とは別に判断してください。
+
+CIではキャッシュの有無にかかわらず共用スクリプトと全4チェックを実行します。
+キャッシュを無効にする検証は、一時的に`cache: false`を指定します。
+キャッシュ利用時のlock反映は、固定リポジトリ内の互換性がある間接依存を別バージョンでlockし、
+導入後の`opam list --installed --columns=name,version`で確認します。
+検証用のlock変更は最終成果物から除き、元のlockで全チェックを再実行します。
+実CIの実行URL・checkout SHA・キャッシュ利用・各チェックの結果はPRなどに記録し、
+ローカル検証と実CIの確認を区別してください。
 
 ## 整形
 
 OCamlFormat 0.29.0と`profile=default`をルートの`.ocamlformat`で固定しています。
 異なるバージョンのOCamlFormatではバージョンチェックが失敗します。
-現在使用するswitchを確認し、そのswitchに導入してください。
-OCaml 5.4.1 / Dune 3.24.2は開発環境の手順で用意します。
-
-```sh
-opam switch show
-opam install ocamlformat.0.29.0
-eval "$(opam env)"
-ocamlc -version
-dune --version
-ocamlformat --version
-```
-
+開発環境の手順で、lockから固定バージョンのツールを導入してください。
 OCamlFormat自身のテスト用依存には`dune < 3.22`の制約があるため、
-この導入に`--with-test`は指定しません。プロジェクトのテストは別途実行します。
+依存パッケージ自身のテストは有効にしません。プロジェクトのテストは別途実行します。
+以下の直接実行は、専用環境を`opam env`でシェルに反映した状態を前提とします。
 
 プロジェクトルートで次を実行します。
 
@@ -201,8 +244,8 @@ Duneファイルの整形は対象外にしています。
 将来、外部ソースをリポジトリ内に取り込む場合はDuneの`vendored_dirs`で指定します。
 特定のエディタや独自スクリプトは不要です。
 
-ローカルと将来のCIでは、同じ固定バージョンのツールで次を実行します。
-整形チェックと静的チェックは独立した入口とし、CIワークフローは別途導入します。
+ローカルとCIでは、同じ固定バージョンのツールで次を実行します。
+整形チェックと静的チェックは独立した入口とし、CIでも同じ入口を使用します。
 
 ```sh
 dune build @fmt
@@ -213,7 +256,7 @@ dune runtest
 ## 静的チェック
 
 開発環境の手順でOCaml 5.4.1 / Dune 3.24.2を用意した後、次を実行します。
-追加パッケージは不要です。ローカルと将来のCIで共用する入口はこのスクリプトです。
+追加パッケージは不要です。ローカルとCIで共用する入口はこのスクリプトです。
 リポジトリ内外のどのディレクトリからでも、スクリプトのパスを指定して実行できます。
 
 ```sh

@@ -25,37 +25,38 @@ jobs:
       - name: 検証対象SHAの記録
         run: git rev-parse HEAD
 
-      - name: OS依存の導入
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config m4 unzip bubblewrap rsync git curl \
-            ca-certificates bzip2 patch
-
-      - name: 固定バージョンの隔離環境構築（キャッシュなし）
+      - name: OCaml・opam環境の準備
         id: setup
-        run: ./scripts/setup-ci.sh "$RUNNER_TEMP/mail-weaver-ci"
+        uses: ocaml/setup-ocaml@93303b622b2522e4411e295f9e77411a24912ac7 # v3.9.0
+        with:
+          ocaml-compiler: ocaml-base-compiler.5.4.1
+          opam-repositories: |
+            default: git+https://github.com/ocaml/opam-repository.git#eba24de6376079a3f9dfa4a9c9ca842475cd1bbc
+          opam-pin: false
+          dune-cache: false
+          # fork PRでは復元・保存とも無効にする。
+          cache: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          # 不整合時はこのprefixを更新して再実行する。
+          cache-prefix: mail-weaver-v1
+
+      - name: lockから依存を導入・検証
+        id: deps
+        run: |
+          ./scripts/install-deps.sh "$OPAMROOT" "$GITHUB_WORKSPACE"
+          opam repository list --cli=2.2 --root="$OPAMROOT" --switch="$GITHUB_WORKSPACE"
 
       - name: 静的チェック
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: |
-          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
-          opam exec -- ./scripts/check-static.sh
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: opam exec -- ./scripts/check-static.sh
 
       - name: 整形チェック（変更なし）
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: |
-          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
-          opam exec -- dune build @fmt
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: opam exec -- dune build @fmt
 
       - name: ビルド
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: |
-          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
-          opam exec -- dune build
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: opam exec -- dune build
 
       - name: 全ユニットテスト（毎回実行）
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: |
-          source "$RUNNER_TEMP/mail-weaver-ci/environment.sh"
-          opam exec -- dune runtest --force
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: opam exec -- dune runtest --force
