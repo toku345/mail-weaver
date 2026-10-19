@@ -31,6 +31,15 @@ opam exec -- dune runtest --force
 整形チェックはソースを書き換えず、テストは`--force`で毎回実行します。
 CIのトークン権限は`contents: read`のみで、秘密情報・実メールを使わず、自動コミットや成果物のアップロードも行いません。
 
+### GitHub Actionsの更新
+
+Dependabotは毎週月曜9時（日本時間）にGitHub Actionsの更新を確認し、
+バージョン更新PRを同時に最大5件まで作成します。SHA固定のActionも対象で、更新PRは既存のCIで検証します。
+自動マージは設定していません。設定は`.github/dependabot.yml`で管理します。
+
+OCaml・Dune・OCamlFormatの依存定義・lockや、opam-repositoryのSHAはこの設定の対象外です。
+これらは「開発環境と依存管理」の手順に従い、設定の整合を確認して手動で更新します。
+
 ### CI環境とキャッシュ
 
 環境構築とコンパイラのキャッシュは
