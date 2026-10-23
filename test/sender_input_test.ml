@@ -108,6 +108,18 @@ let invalid_cases =
       Invalid Address_too_long );
   ]
 
+(* 公開契約で隣り合う検査理由を組み合わせ、順序の入れ替えを検出する。 *)
+let precedence_cases =
+  [
+    ("制御文字は非ASCIIより優先", "利用者@example.com\n", Invalid Control_character);
+    ("非ASCIIは引用符より優先", "\"利用者\"@example.com", Unsupported Non_ascii);
+    ("引用符は山括弧より優先", "Alice <\"alice\"@example.com>", Unsupported Quoted_form);
+    ("山括弧は角括弧より優先", "Alice <alice@[192.0.2.1]>", Unsupported Display_name_form);
+    ("角括弧は丸括弧より優先", "alice@[192.0.2.1] (Alice)", Unsupported Domain_literal);
+    ("丸括弧は全体長より優先", String.make 255 'a' ^ "(Alice)", Unsupported Comment_form);
+    ("全体長は@個数より優先", String.make 255 'a', Invalid Address_too_long);
+  ]
+
 let () =
   List.iter
     (fun (name, address, reason) ->
@@ -118,7 +130,7 @@ let () =
         (name ^ "・同一不正文字列の設定を優先")
         (decide ~from:(Parsed [ address ]) ~allowed:[ address ])
         (bad_allowed reason))
-    invalid_cases;
+    (invalid_cases @ precedence_cases);
   List.iter
     (fun code ->
       let address = "alice" ^ String.make 1 (Char.chr code) ^ "@example.com" in
