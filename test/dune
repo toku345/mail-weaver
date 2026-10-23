@@ -5,6 +5,10 @@
  (name sender_policy_test)
  (libraries mail_weaver))
 
+(test
+ (name sender_input_test)
+ (libraries mail_weaver))
+
 (rule
  (alias runtest)
  (deps dependency_setup_test.sh ../scripts/install-deps.sh)
