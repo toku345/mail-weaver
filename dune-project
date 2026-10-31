@@ -12,5 +12,6 @@
  (depends
   (ocaml (= 5.4.1))
   (dune (= 3.24.2))
-  (ocamlformat (= 0.29.0))))
+  (ocamlformat (= 0.29.0))
+  (yojson (= 3.0.0))))
 (formatting (enabled_for ocaml))

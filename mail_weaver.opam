@@ -9,6 +9,7 @@ depends: [
   "ocaml" {= "5.4.1"}
   "dune" {>= "3.24" & = "3.24.2"}
   "ocamlformat" {= "0.29.0"}
+  "yojson" {= "3.0.0"}
   "odoc" {with-doc}
 ]
 build: [
