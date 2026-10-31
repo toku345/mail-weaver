@@ -181,6 +181,10 @@ let page_cases =
     ( "想定外のID",
       page_response ("[" ^ email "M1" "[]" ^ "," ^ email "M3" "[]" ^ "]"),
       protocol E.Email_ids_mismatch );
+    ( "queryのID重複で別メールを隠す",
+      page_response ~ids:{|["M1", "M1"]|}
+        ("[" ^ email "M1" "[]" ^ "," ^ email "M2" "[]" ^ "]"),
+      protocol E.Email_ids_mismatch );
     ( "不正なメールID",
       page_response ~ids:{|["M\t1"]|} ("[" ^ email "M1" "[]" ^ "]"),
       protocol E.Invalid_id );

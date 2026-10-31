@@ -219,8 +219,10 @@ let page text =
     in
     let find id = List.find_all (fun (email : email) -> email.id = id) emails in
     let ordered = List.map find ids in
+    let distinct = List.length (List.sort_uniq String.compare ids) in
     if
-      List.length emails = List.length ids
+      distinct = List.length ids
+      && List.length emails = List.length ids
       && List.for_all (fun found -> List.length found = 1) ordered
     then Ok { query_state; position; total; emails = List.concat ordered }
     else Error (System_error.Protocol System_error.Email_ids_mismatch)
