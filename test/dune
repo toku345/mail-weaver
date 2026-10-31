@@ -14,3 +14,13 @@
  (deps dependency_setup_test.sh ../scripts/install-deps.sh)
  (action
   (run sh %{dep:dependency_setup_test.sh} %{dep:../scripts/install-deps.sh})))
+
+(tests
+ (names
+  config_test
+  jmap_request_test
+  jmap_response_test
+  mailbox_resolution_test
+  paging_test
+  dry_run_test)
+ (libraries mail_weaver yojson))

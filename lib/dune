@@ -1,2 +1,3 @@
 (library
- (name mail_weaver))
+ (name mail_weaver)
+ (libraries yojson))
