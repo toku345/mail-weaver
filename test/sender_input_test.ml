@@ -292,5 +292,27 @@ let () =
   let from = Parsed [ alice ] in
   let allowed = [ alice ] in
   check "同一入力で再現する" (decide ~from ~allowed) (decide ~from ~allowed);
+  (* 判定対象のメールが無くても、設定の誤りを decide と同じ規則で検出する。 *)
+  List.iter
+    (fun (name, allowed, expected) ->
+      incr checks;
+      if validate_allowed allowed <> expected then begin
+        incr failures;
+        Printf.eprintf "FAIL - validate_allowed %s\n" name
+      end)
+    [
+      ("空の許可設定", [], Ok ());
+      ("有効な設定", [ alice; "bob@example.com" ], Ok ());
+      ( "2件目の表示名",
+        [ alice; "Alice <alice@example.com>" ],
+        Error
+          (Invalid_allowed_address
+             { index = 1; reason = Unsupported Display_name_form }) );
+      ( "空の要素",
+        [ "" ],
+        Error
+          (Invalid_allowed_address { index = 0; reason = Invalid Empty_address })
+      );
+    ];
   if !failures > 0 then exit 1;
   Printf.printf "sender_input tests passed: %d checks\n" !checks
