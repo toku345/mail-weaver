@@ -45,6 +45,10 @@ type outcome =
   | Decision of Sender_policy.decision
   | Pending_input of from_error
 
+val validate_allowed : string list -> (unit, configuration_error) result
+(** [allowed] だけを [decide] と同じ規則で検証し、最初の問題を返す。 判定対象のメールが 0
+    件でも設定の誤りを検出できるよう、通信や判定の前に呼ぶ。 *)
+
 val decide :
   from:from_input ->
   allowed:string list ->

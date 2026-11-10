@@ -87,10 +87,15 @@ let first_problem addresses =
   in
   loop 0 addresses
 
-let decide ~from ~allowed =
+let validate_allowed allowed =
   match first_problem allowed with
   | Some problem -> Error (Invalid_allowed_address problem)
-  | None -> (
+  | None -> Ok ()
+
+let decide ~from ~allowed =
+  match validate_allowed allowed with
+  | Error error -> Error error
+  | Ok () -> (
       match from with
       | Parse_failed -> Ok (Pending_input From_parse_failed)
       | Parsed addresses -> (
